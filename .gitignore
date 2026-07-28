@@ -1,0 +1,26 @@
+# Node & Frontend Dependencies
+node_modules/
+dist/
+build/
+.vite/
+
+# Python & AI Dependencies
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+
+# Environment Variables & Secrets
+.env
+.env.*
+*.env
+
+# Prisma / Database
+/backend/generated/prisma
+/backend/prisma/*.db
+/backend/prisma/*.db-journal
+
+# OS & Editor Files
+.DS_Store
+.vscode/

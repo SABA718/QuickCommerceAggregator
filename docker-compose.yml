@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: qc-postgres
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: rootpassword
+      POSTGRES_DB: quick_compare_db
+    ports:
+      - "51213:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: qc-redis
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres-data:

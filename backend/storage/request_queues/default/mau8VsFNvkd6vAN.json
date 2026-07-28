@@ -1,0 +1,9 @@
+{
+	"id": "mau8VsFNvkd6vAN",
+	"json": "{\"id\":\"mau8VsFNvkd6vAN\",\"url\":\"https://www.zeptonow.com/search?q=dragonfruit\",\"uniqueKey\":\"https://www.zeptonow.com/search?q=dragonfruit\",\"method\":\"GET\",\"noRetry\":false,\"retryCount\":0,\"errorMessages\":[\"Error: Request blocked - received 403 status code.\\n    at PlaywrightCrawler._throwOnBlockedRequest (D:\\\\MVP\\\\backend\\\\node_modules\\\\@crawlee\\\\basic\\\\internals\\\\basic-crawler.js:910:19)\\n    at PlaywrightCrawler._responseHandler (D:\\\\MVP\\\\backend\\\\node_modules\\\\@crawlee\\\\browser\\\\internals\\\\browser-crawler.js:385:22)\\n    at PlaywrightCrawler._runRequestHandler (D:\\\\MVP\\\\backend\\\\node_modules\\\\@crawlee\\\\browser\\\\internals\\\\browser-crawler.js:262:24)\\n    at async PlaywrightCrawler._runRequestHandler (D:\\\\MVP\\\\backend\\\\node_modules\\\\@crawlee\\\\playwright\\\\internals\\\\playwright-crawler.js:120:9)\\n    at async wrap (D:\\\\MVP\\\\backend\\\\node_modules\\\\@apify\\\\timeout\\\\cjs\\\\index.cjs:54:21)\"],\"headers\":{},\"userData\":{\"__crawlee\":{\"state\":5}},\"handledAt\":\"2026-07-01T07:11:03.319Z\"}",
+	"method": "GET",
+	"orderNo": null,
+	"retryCount": 0,
+	"uniqueKey": "https://www.zeptonow.com/search?q=dragonfruit",
+	"url": "https://www.zeptonow.com/search?q=dragonfruit"
+}
