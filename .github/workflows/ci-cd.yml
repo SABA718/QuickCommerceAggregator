@@ -14,12 +14,17 @@ concurrency:
 
 jobs:
   javascript:
+    name: javascript (${{ matrix.project }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        project: [backend, mvp]
+        include:
+          - project: backend
+            directory: backend
+          - project: mvp
+            directory: mvp # The frontend is stored in mvp/, not frontend/.
     services:
       redis:
         image: redis:7.4-alpine
@@ -29,16 +34,24 @@ jobs:
           --health-interval 5s --health-timeout 3s --health-retries 10
     defaults:
       run:
-        working-directory: ${{ matrix.project }}
+        working-directory: ${{ matrix.directory }}
     env:
       TEST_REDIS_URL: redis://127.0.0.1:6379
+      REDIS_URL: redis://127.0.0.1:6379
+      FRONTEND_URL: http://localhost:5173
+      SUPABASE_URL: https://example.invalid
+      SUPABASE_KEY: ci-only-placeholder
+      SESSION_SECRET: ci-only-session-secret-with-at-least-32-characters
+      AI_SERVICE_TOKEN: ci-only-internal-token-with-at-least-32-characters
+      AI_SERVICE_URL: http://localhost:8000
+      VITE_SITE_URL: https://example.invalid
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
           cache: npm
-          cache-dependency-path: ${{ matrix.project }}/package-lock.json
+          cache-dependency-path: ${{ matrix.directory }}/package-lock.json
       - run: npm ci --no-audit --no-fund
       - run: npm run lint
       - run: npm run typecheck
@@ -51,6 +64,10 @@ jobs:
     defaults:
       run:
         working-directory: ai-service
+    env:
+      SUPABASE_URL: https://example.invalid
+      SUPABASE_KEY: ci-only-placeholder
+      AI_SERVICE_TOKEN: ci-only-internal-token-with-at-least-32-characters
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
