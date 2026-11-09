@@ -17,11 +17,11 @@ function useFullBleedPage() {
   }, []);
 }
 
-const navLinks = ['Categories', 'Offers', 'About Us'];
+const navLinks = ['Categories', 'About Us'];
 
-function Navbar({ onLoginClick, onCategoriesClick }) {
+function Navbar({ onLoginClick, onCategoriesClick, userData, onLogout, onCartClick }) {
   const [isLocationOpen, setIsLocationOpen] = useState(false);
-  const [selectedLocation, setSelectedLocation] = useState('');
+
   const [scrolled, setScrolled] = useState(false);
   const [hoveredLink, setHoveredLink] = useState(null);
 
@@ -83,7 +83,7 @@ function Navbar({ onLoginClick, onCategoriesClick }) {
         zIndex: 100,
       }}
     >
-      <nav
+      <nav className="main-navbar"
         style={{
           width: '100%',
           background: 'rgba(248, 246, 241, 0.92)',
@@ -167,7 +167,7 @@ function Navbar({ onLoginClick, onCategoriesClick }) {
 
           <div style={{ flex: '0 0 auto' }}>
             <LocationTrigger
-              selectedLocation={selectedLocation}
+              selectedLocation={'Provider location'}
               onClick={() => setIsLocationOpen(true)}
             />
           </div>
@@ -183,7 +183,7 @@ function Navbar({ onLoginClick, onCategoriesClick }) {
             {navLinks.map((label) => (
               <a
                 key={label}
-                href={label === 'Categories' ? '#categories-section' : '#'}
+                href={label === 'Categories' ? '/#categories-section' : '/about'}
                 onClick={(e) => {
                   if (label === 'Categories') {
                     e.preventDefault();
@@ -214,10 +214,7 @@ function Navbar({ onLoginClick, onCategoriesClick }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: '0 0 auto' }}>
             <button
               type="button"
-              onClick={() => {
-                console.log('Navbar login clicked');
-                onLoginClick?.();
-              }}
+              onClick={userData ? onLogout : onLoginClick}
               style={{
                 height: '42px',
                 padding: '0 18px',
@@ -232,12 +229,13 @@ function Navbar({ onLoginClick, onCategoriesClick }) {
                 zIndex: 101,
               }}
             >
-              Login
+              {userData ? 'Log out' : 'Login'}
             </button>
 
             <button
               type="button"
-              aria-label="Cart"
+              aria-label="Open recipe basket"
+              onClick={onCartClick}
               style={{
                 position: 'relative',
                 width: '42px',
@@ -254,28 +252,7 @@ function Navbar({ onLoginClick, onCategoriesClick }) {
               }}
             >
               <IconCart />
-              <span
-                style={{
-                  position: 'absolute',
-                  top: '-3px',
-                  right: '-3px',
-                  minWidth: '17px',
-                  height: '17px',
-                  padding: '0 4px',
-                  borderRadius: '999px',
-                  background: gold,
-                  color: ink,
-                  display: 'flex',
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  fontSize: '10px',
-                  fontWeight: 800,
-                  fontFamily: '"Inter", sans-serif',
-                  border: `2px solid ${ivory}`,
-                }}
-              >
-                0
-              </span>
+
             </button>
           </div>
         </div>
@@ -284,11 +261,7 @@ function Navbar({ onLoginClick, onCategoriesClick }) {
       <LocationModal
         isOpen={isLocationOpen}
         onClose={() => setIsLocationOpen(false)}
-        onConfirm={(locationData) => {
-          setSelectedLocation(locationData.label);
-          setIsLocationOpen(false);
-          console.log('Selected location:', locationData);
-        }}
+
       />
     </div>
   );

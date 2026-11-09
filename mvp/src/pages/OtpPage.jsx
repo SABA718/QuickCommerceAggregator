@@ -1,17 +1,28 @@
 import { useEffect, useRef, useState } from 'react';
 
+/**
+ * @param {{isOpen?: boolean, onClose?: () => void, onBack?: () => void,
+ * phoneNumber?: string, onVerify?: (otp: string) => void | Promise<void>,
+ * onResend?: () => boolean | Promise<boolean>, isSendingOtp?: boolean,
+ * isVerifyingOtp?: boolean, errorMessage?: string, statusMessage?: string,
+ * resendAfterSeconds?: number}} props
+ */
 function OtpPage({
   isOpen = false,
   onClose = () => {},
   onBack = () => {},
   phoneNumber = '',
   onVerify = () => {},
-  onResend = () => {},
+  onResend = () => false,
   isSendingOtp = false,
   isVerifyingOtp = false,
+  errorMessage = '',
+  statusMessage = '',
+  resendAfterSeconds = 30,
 }) {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
-  const [timer, setTimer] = useState(25);
+  const [timer, setTimer] = useState(resendAfterSeconds);
+  const [localError, setLocalError] = useState('');
   const inputRefs = useRef([]);
 
   useEffect(() => {
@@ -31,12 +42,11 @@ function OtpPage({
     if (!isOpen) return;
 
     setOtp(['', '', '', '', '', '']);
-    setTimer(25);
+    setTimer(resendAfterSeconds);
+    setLocalError('');
 
-    setTimeout(() => {
-      inputRefs.current[0]?.focus();
-    }, 50);
-  }, [isOpen]);
+    inputRefs.current[0]?.focus();
+  }, [isOpen, resendAfterSeconds]);
 
   useEffect(() => {
     if (!isOpen || timer <= 0) return;
@@ -51,6 +61,7 @@ function OtpPage({
   const handleChange = (value, index) => {
     if (!/^\d?$/.test(value)) return;
 
+    setLocalError('');
     const nextOtp = [...otp];
     nextOtp[index] = value;
     setOtp(nextOtp);
@@ -95,16 +106,18 @@ function OtpPage({
     event.preventDefault();
   };
 
-  const handleVerifyClick = () => {
+  const handleVerifyClick = (event) => {
+    event.preventDefault();
+    if (isSendingOtp || isVerifyingOtp) return;
     const enteredOtp = otp.join('');
     if (enteredOtp.length !== 6) {
-      alert('Please enter the 6-digit OTP');
+      setLocalError('Please enter the complete 6-digit code.');
       return;
     }
     onVerify(enteredOtp);
   };
 
-  const formattedTime = `00:${String(timer).padStart(2, '0')}`;
+  const formattedTime = `${String(Math.floor(timer / 60)).padStart(2, '0')}:${String(timer % 60).padStart(2, '0')}`;
 
   if (!isOpen) return null;
 
@@ -465,9 +478,11 @@ function OtpPage({
       `}</style>
 
       <div className="otp-overlay" onClick={onClose}>
-        <div className="otp-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="otp-modal" role="dialog" aria-modal="true" aria-labelledby="otp-heading" onClick={(e) => e.stopPropagation()}>
           <button
             className="otp-close"
+            type="button"
+            disabled={isSendingOtp || isVerifyingOtp}
             onClick={onClose}
             aria-label="Close OTP modal"
           >
@@ -478,14 +493,16 @@ function OtpPage({
             <div className="otp-left">
               <button
                 className="otp-back"
+                type="button"
+                disabled={isSendingOtp || isVerifyingOtp}
                 onClick={onBack}
                 aria-label="Go back"
               >
                 ←
               </button>
 
-              <div className="otp-content">
-                <h2>OTP Verification</h2>
+              <form className="otp-content" onSubmit={handleVerifyClick}>
+                <h2 id="otp-heading">OTP Verification</h2>
                 <p>
                   Enter the 6-digit code sent to <strong>{phoneNumber}</strong>
                 </p>
@@ -494,8 +511,12 @@ function OtpPage({
                   {otp.map((digit, index) => (
                     <input
                       key={index}
-                      ref={(el) => (inputRefs.current[index] = el)}
+                      ref={(el) => { inputRefs.current[index] = el; }}
                       className="otp-box"
+                      aria-label={`Code digit ${index + 1}`}
+                      aria-invalid={Boolean(errorMessage || localError)}
+                      aria-describedby={(errorMessage || localError) ? "otp-error" : undefined}
+                      disabled={isSendingOtp || isVerifyingOtp}
                       type="text"
                       inputMode="numeric"
                       autoComplete={index === 0 ? 'one-time-code' : 'off'}
@@ -507,17 +528,24 @@ function OtpPage({
                   ))}
                 </div>
 
-                <div className="otp-timer">{formattedTime}</div>
+                {(localError || errorMessage) && <p id="otp-error" role="alert">{localError || errorMessage}</p>}
+                {statusMessage && <p role="status">{statusMessage}</p>}
+                <div className="otp-timer" aria-label="Time until another code can be requested">{formattedTime}</div>
 
                 <div className="otp-resend">
                   Didn’t get the code?
                   <button
-                    disabled={isSendingOtp}
-                    onClick={() => {
-                      setTimer(25);
-                      setOtp(['', '', '', '', '', '']);
-                      inputRefs.current[0]?.focus();
-                      onResend();
+                    type="button"
+                    disabled={timer > 0 || isSendingOtp || isVerifyingOtp}
+                    onClick={async () => {
+                      if (timer > 0 || isSendingOtp || isVerifyingOtp) return;
+                      const sent = await onResend();
+                      if (sent) {
+                        setTimer(resendAfterSeconds);
+                        setOtp(['', '', '', '', '', '']);
+                        setLocalError('');
+                        inputRefs.current[0]?.focus();
+                      }
                     }}
                   >
                     {isSendingOtp ? 'Sending...' : 'Resend OTP'}
@@ -526,12 +554,12 @@ function OtpPage({
 
                 <button
                   className="otp-verify-btn"
-                  onClick={handleVerifyClick}
-                  disabled={isVerifyingOtp}
+                  type="submit"
+                  disabled={isSendingOtp || isVerifyingOtp}
                 >
                   {isVerifyingOtp ? 'Verifying...' : 'Verify OTP'}
                 </button>
-              </div>
+              </form>
             </div>
 
             <div className="otp-right">
@@ -554,24 +582,8 @@ function OtpPage({
                   </svg>
                 </div>
 
-                <h3>Order faster & easier every time</h3>
-                <p>with the DealDock app</p>
-
-                <button className="store-btn" type="button">
-                  <span style={{ fontSize: '22px' }}>▶</span>
-                  <div className="store-copy">
-                    <small>GET IT ON</small>
-                    <strong>Google Play</strong>
-                  </div>
-                </button>
-
-                <button className="store-btn" type="button">
-                  <span style={{ fontSize: '22px' }}></span>
-                  <div className="store-copy">
-                    <small>Download on the</small>
-                    <strong>App Store</strong>
-                  </div>
-                </button>
+                <h3>Keep your code private</h3>
+                <p>Enter the latest code here to securely sign in to DealDock.</p>
               </div>
             </div>
           </div>

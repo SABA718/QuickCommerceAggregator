@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import OtpPage from './OtpPage';
 import { sendOtp, verifyOtp } from '../api';
 
@@ -8,6 +8,10 @@ function LoginPage({ isOpen, onClose, onLoginSuccess }) {
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [statusMessage, setStatusMessage] = useState('');
+  const [resendAfterSeconds, setResendAfterSeconds] = useState(30);
+  const requestPending = useRef(false);
+  const phoneInput = useRef(null);
 
   useEffect(() => {
     const existingLink = document.querySelector(
@@ -26,7 +30,21 @@ function LoginPage({ isOpen, onClose, onLoginSuccess }) {
 
   useEffect(() => {
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') {
+      if (event.key === 'Tab') {
+        const dialog = document.querySelector('.otp-modal, .login-modal');
+        const controls = dialog?.querySelectorAll('button:not(:disabled), input:not(:disabled), a[href]');
+        const first = controls?.[0];
+        const last = controls?.[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          if (last instanceof HTMLElement) last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          if (first instanceof HTMLElement) first.focus();
+        }
+      }
+      if (event.key === 'Escape' && !requestPending.current) {
+        event.preventDefault();
         if (isOtpOpen) {
           setIsOtpOpen(false);
         } else {
@@ -36,6 +54,7 @@ function LoginPage({ isOpen, onClose, onLoginSuccess }) {
     };
 
     if (isOpen || isOtpOpen) {
+      const previousFocus = document.activeElement;
       const previousOverflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
       window.addEventListener('keydown', handleKeyDown);
@@ -43,6 +62,7 @@ function LoginPage({ isOpen, onClose, onLoginSuccess }) {
       return () => {
         document.body.style.overflow = previousOverflow;
         window.removeEventListener('keydown', handleKeyDown);
+        if (previousFocus instanceof HTMLElement) previousFocus.focus();
       };
     }
   }, [isOpen, isOtpOpen, onClose]);
@@ -55,66 +75,82 @@ function LoginPage({ isOpen, onClose, onLoginSuccess }) {
   };
 
   const handleClose = () => {
+    if (requestPending.current) return;
     setErrorMessage('');
+    setStatusMessage('');
     setIsOtpOpen(false);
     onClose?.();
   };
 
-  const handleContinue = async () => {
-    const cleaned = normalizePhone(phoneNumber);
+  useEffect(() => {
+    if (isOpen && !isOtpOpen) phoneInput.current?.focus();
+  }, [isOpen, isOtpOpen]);
 
-    if (cleaned.length !== 10) {
-      setErrorMessage('Please enter a valid 10-digit mobile number');
+  const handleContinue = async (event) => {
+    event?.preventDefault();
+    if (requestPending.current) return;
+    const cleaned = normalizePhone(phoneNumber);
+    if (!/^[6-9]\d{9}$/.test(cleaned)) {
+      setErrorMessage('Enter a valid 10-digit Indian mobile number.');
       return;
     }
-
+    requestPending.current = true;
+    setIsSendingOtp(true);
+    setErrorMessage('');
+    setStatusMessage('');
     try {
-      setIsSendingOtp(true);
-      setErrorMessage('');
-
-      await sendOtp(`+91${cleaned}`);
+      const response = await sendOtp(`+91${cleaned}`);
+      setResendAfterSeconds(response.resendAfterSeconds ?? 30);
       setIsOtpOpen(true);
     } catch (error) {
-      setErrorMessage(error.message || 'Failed to send OTP');
+      setErrorMessage(error.message || 'Unable to send a code. Please try again.');
     } finally {
+      requestPending.current = false;
       setIsSendingOtp(false);
     }
   };
 
   const handleVerifyOtp = async (enteredOtp) => {
+    if (requestPending.current) return;
+    if (!/^\d{6}$/.test(enteredOtp)) {
+      setErrorMessage('Enter the complete 6-digit code.');
+      return;
+    }
+    requestPending.current = true;
+    setIsVerifyingOtp(true);
+    setErrorMessage('');
+    setStatusMessage('');
     try {
-      setIsVerifyingOtp(true);
-      setErrorMessage('');
-
-      await verifyOtp(getFormattedPhone(), enteredOtp);
-
-      const userPayload = {
-        phoneNumber: getFormattedPhone(),
-      };
-
+      const response = await verifyOtp(getFormattedPhone(), enteredOtp);
+      if (!response.user?.phoneNumber) throw new Error('Unable to confirm your session. Please try again.');
       setIsOtpOpen(false);
       setPhoneNumber('');
-      onLoginSuccess?.(userPayload);
+      onLoginSuccess?.(response.user);
       onClose?.();
     } catch (error) {
-      setErrorMessage(error.message || 'Invalid OTP');
-      alert(error.message || 'Invalid OTP');
+      setErrorMessage(error.message || 'Unable to verify this code. Please try again.');
     } finally {
+      requestPending.current = false;
       setIsVerifyingOtp(false);
     }
   };
 
   const handleResendOtp = async () => {
+    if (requestPending.current) return false;
+    requestPending.current = true;
+    setIsSendingOtp(true);
+    setErrorMessage('');
+    setStatusMessage('');
     try {
-      setIsSendingOtp(true);
-      setErrorMessage('');
-
-      await sendOtp(getFormattedPhone());
-      alert('OTP resent successfully');
+      const response = await sendOtp(getFormattedPhone());
+      setResendAfterSeconds(response.resendAfterSeconds ?? 30);
+      setStatusMessage('A new code has been sent.');
+      return true;
     } catch (error) {
-      setErrorMessage(error.message || 'Failed to resend OTP');
-      alert(error.message || 'Failed to resend OTP');
+      setErrorMessage(error.message || 'Unable to resend a code. Please try again.');
+      return false;
     } finally {
+      requestPending.current = false;
       setIsSendingOtp(false);
     }
   };
@@ -463,10 +499,15 @@ function LoginPage({ isOpen, onClose, onLoginSuccess }) {
         >
           <div
             className="login-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="login-heading"
             onClick={(e) => e.stopPropagation()}
           >
             <button
               className="close-btn"
+              type="button"
+              disabled={isSendingOtp}
               onClick={handleClose}
               aria-label="Close modal"
             >
@@ -481,11 +522,11 @@ function LoginPage({ isOpen, onClose, onLoginSuccess }) {
                 </div>
 
                 <div className="left-content">
-                  <h2>Everyday low prices in minutes</h2>
+                  <h2 id="login-heading">Compare everyday grocery prices</h2>
                   <p>Enter your phone number to continue.</p>
                 </div>
 
-                <div className="phone-wrap">
+                <form className="phone-wrap" onSubmit={handleContinue} noValidate>
                   <div className="input-shell">
                     <div className="country-code">
                       <span>IN</span>
@@ -494,32 +535,39 @@ function LoginPage({ isOpen, onClose, onLoginSuccess }) {
 
                     <input
                       className="phone-input"
+                      ref={phoneInput}
+                      aria-label="Indian mobile number"
+                      aria-describedby={errorMessage ? "login-error" : undefined}
+                      aria-invalid={Boolean(errorMessage)}
+                      inputMode="numeric"
+                      autoComplete="tel-national"
+                      maxLength={10}
+                      disabled={isSendingOtp}
                       type="tel"
                       placeholder="Enter phone number"
                       value={phoneNumber}
                       onChange={(e) => {
-                        setPhoneNumber(e.target.value);
+                        setPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 10));
                         setErrorMessage('');
                       }}
                     />
                   </div>
 
                   {errorMessage ? (
-                    <p className="error-text">{errorMessage}</p>
+                    <p id="login-error" className="error-text" role="alert">{errorMessage}</p>
                   ) : null}
 
                   <button
                     className="continue-btn"
-                    onClick={handleContinue}
+                    type="submit"
                     disabled={isSendingOtp}
                   >
                     {isSendingOtp ? 'Sending OTP...' : 'Continue'}
                   </button>
-                </div>
+                </form>
 
                 <div className="legal">
-                  By continuing, you agree to our <br />
-                  <strong>Terms of Service & Privacy Policy</strong>
+                  Your number is used to send a one-time sign-in code.
                 </div>
               </div>
 
@@ -543,24 +591,8 @@ function LoginPage({ isOpen, onClose, onLoginSuccess }) {
                     </svg>
                   </div>
 
-                  <h3>Order faster & easier every time</h3>
-                  <p>with the DealDock app</p>
-
-                  <button className="store-btn" type="button">
-                    <span style={{ fontSize: '22px' }}>▶</span>
-                    <div className="store-copy">
-                      <small>GET IT ON</small>
-                      <strong>Google Play</strong>
-                    </div>
-                  </button>
-
-                  <button className="store-btn" type="button">
-                    <span style={{ fontSize: '22px' }}></span>
-                    <div className="store-copy">
-                      <small>Download on the</small>
-                      <strong>App Store</strong>
-                    </div>
-                  </button>
+                  <h3>Your shopping starts here</h3>
+                  <p>Compare available prices and build your grocery list in your browser.</p>
                 </div>
               </div>
             </div>
@@ -571,17 +603,18 @@ function LoginPage({ isOpen, onClose, onLoginSuccess }) {
       <OtpPage
         isOpen={isOtpOpen}
         phoneNumber={`+91 ${normalizePhone(phoneNumber)}`}
-        onClose={() => {
-          setIsOtpOpen(false);
-          setErrorMessage('');
-          onClose?.();
-        }}
+        onClose={handleClose}
         onBack={() => {
+          if (requestPending.current) return;
+          setStatusMessage('');
           setIsOtpOpen(false);
           setErrorMessage('');
         }}
         onResend={handleResendOtp}
         onVerify={handleVerifyOtp}
+        errorMessage={errorMessage}
+        statusMessage={statusMessage}
+        resendAfterSeconds={resendAfterSeconds}
         isSendingOtp={isSendingOtp}
         isVerifyingOtp={isVerifyingOtp}
       />

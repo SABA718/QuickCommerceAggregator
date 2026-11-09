@@ -1,46 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import axios from 'axios';
-import LoginPage from './LoginPage';
+import { getIngredients, errorMessage } from '../api';
+import { normalizeRecipe, availableOffers } from '../cartModel';
 
-function AiPage({ userData }) {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const promptFromState = location.state?.prompt || '';
-
-  const [query, setQuery] = useState(promptFromState);
-  const [isLoginOpen, setIsLoginOpen] = useState(false);
-
-  const [result, setResult] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  const allowedPlatformKeys = ['blinkit', 'zepto', 'instamart', 'bigbasket'];
-
-  const [selectedQuantities, setSelectedQuantities] = useState({});
-  const [removedIngredients, setRemovedIngredients] = useState([]);
-  const [selectedIngredientStores, setSelectedIngredientStores] = useState({});
-  const [selectedSummaryStore, setSelectedSummaryStore] = useState('');
-
-  useEffect(() => {
-    if (promptFromState) {
-      fetchIngredients(promptFromState);
-    }
-  }, [promptFromState]);
-
-  useEffect(() => {
-    if (document.querySelector('link[data-fonts="dealdock-fonts"]')) return;
-
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href =
-      'https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;1,9..144,500&family=Inter:wght@400;500;600;700;800;900&display=swap';
-    link.setAttribute('data-fonts', 'dealdock-fonts');
-    document.head.appendChild(link);
-  }, []);
-
-  const PlatformMark = ({ platform, size = 16 }) => {
-    const marks = {
+const PlatformMark = ({ platform, size = 16 }) => {
+  const marks = {
       zepto: (
         <svg viewBox="0 0 24 24" width={size} height={size}>
           <path d="M4 4h16l-8 8h8l-9 9 2-7H5l8-8H5z" fill="#7c3aed" />
@@ -81,7 +45,7 @@ function AiPage({ userData }) {
     return marks[platform] || marks.default;
   };
 
-  const platformCatalog = {
+const platformCatalog = {
     zepto: {
       key: 'zepto',
       name: 'Zepto',
@@ -112,109 +76,8 @@ function AiPage({ userData }) {
     },
   };
 
-  const mockInterfaceResult = {
-    winner: {
-      platform: 'Zepto',
-      totalPrice: 238,
-      avgRating: 4.5,
-      deliveryTime: '10 mins',
-      checkoutUrl: 'https://www.zeptonow.com/',
-    },
-    runnerUps: [
-      { platform: 'Blinkit', totalPrice: 245, avgRating: 4.4, deliveryTime: '12 mins' },
-      { platform: 'Instamart', totalPrice: 249, avgRating: 4.3, deliveryTime: '14 mins' },
-      { platform: 'BigBasket', totalPrice: 258, avgRating: 4.4, deliveryTime: '18 mins' },
-    ],
-    winnerItems: [
-      {
-        originalQuery: 'Cumin Seeds',
-        weight: '100g',
-        unitPrice: '₹21/100g',
-        quantityOptions: ['50g Pack', '100g Pack', '200g Pack'],
-        options: [
-          { platform: 'Zepto', price: 40, url: 'https://www.zeptonow.com/' },
-          { platform: 'Blinkit', price: 42, url: 'https://blinkit.com/' },
-          { platform: 'Instamart', price: 46, url: 'https://www.swiggy.com/instamart' },
-          { platform: 'BigBasket', price: 49, url: 'https://www.bigbasket.com/' },
-        ],
-      },
-      {
-        originalQuery: 'Coriander Seeds',
-        weight: '50g',
-        unitPrice: '₹25/100g',
-        quantityOptions: ['50g Pack', '100g Pack'],
-        options: [
-          { platform: 'Blinkit', price: 11, url: 'https://blinkit.com/' },
-          { platform: 'Zepto', price: 12, url: 'https://www.zeptonow.com/' },
-          { platform: 'Instamart', price: 12, url: 'https://www.swiggy.com/instamart' },
-          { platform: 'BigBasket', price: 14, url: 'https://www.bigbasket.com/' },
-        ],
-      },
-      {
-        originalQuery: 'Turmeric',
-        weight: '500g',
-        unitPrice: '₹15/100g',
-        quantityOptions: ['100g Pack', '250g Pack', '500g Pack'],
-        options: [
-          { platform: 'Zepto', price: 42, url: 'https://www.zeptonow.com/' },
-          { platform: 'Blinkit', price: 44, url: 'https://blinkit.com/' },
-          { platform: 'Instamart', price: 46, url: 'https://www.swiggy.com/instamart' },
-          { platform: 'BigBasket', price: 49, url: 'https://www.bigbasket.com/' },
-        ],
-      },
-      {
-        originalQuery: 'Red Chili Powder',
-        weight: '200g',
-        unitPrice: '₹23/100g',
-        quantityOptions: ['100g Pack', '200g Pack', '500g Pack'],
-        options: [
-          { platform: 'Zepto', price: 46, url: 'https://www.zeptonow.com/' },
-          { platform: 'Blinkit', price: 48, url: 'https://blinkit.com/' },
-          { platform: 'Instamart', price: 49, url: 'https://www.swiggy.com/instamart' },
-          { platform: 'BigBasket', price: 52, url: 'https://www.bigbasket.com/' },
-        ],
-      },
-      {
-        originalQuery: 'Garam Masala',
-        weight: '500g',
-        unitPrice: '₹15/100g',
-        quantityOptions: ['100g Pack', '250g Pack', '500g Pack'],
-        options: [
-          { platform: 'Zepto', price: 75, url: 'https://www.zeptonow.com/' },
-          { platform: 'Blinkit', price: 78, url: 'https://blinkit.com/' },
-          { platform: 'BigBasket', price: 79, url: 'https://www.bigbasket.com/' },
-          { platform: 'Instamart', price: 80, url: 'https://www.swiggy.com/instamart' },
-        ],
-      },
-      {
-        originalQuery: 'Cilantro',
-        weight: '50g',
-        unitPrice: '₹27/100g',
-        quantityOptions: ['50g Pack', '100g Pack'],
-        options: [
-          { platform: 'Zepto', price: 13, url: 'https://www.zeptonow.com/' },
-          { platform: 'Instamart', price: 14, url: 'https://www.swiggy.com/instamart' },
-          { platform: 'Blinkit', price: 14, url: 'https://blinkit.com/' },
-          { platform: 'BigBasket', price: 16, url: 'https://www.bigbasket.com/' },
-        ],
-      },
-      {
-        originalQuery: 'Mint',
-        weight: '100g',
-        unitPrice: '₹13/100g',
-        quantityOptions: ['50g Pack', '100g Pack'],
-        options: [
-          { platform: 'Zepto', price: 13, url: 'https://www.zeptonow.com/' },
-          { platform: 'Blinkit', price: 14, url: 'https://blinkit.com/' },
-          { platform: 'Instamart', price: 15, url: 'https://www.swiggy.com/instamart' },
-          { platform: 'BigBasket', price: 17, url: 'https://www.bigbasket.com/' },
-        ],
-      },
-    ],
-  };
-
-  const getPlatformMeta = (platform) => {
-    const key = String(platform || '').toLowerCase().replace(/\s+/g, '');
+const getPlatformMeta = (platform) => {
+  const key = String(platform || '').toLowerCase().replace(/\s+/g, '');
 
     if (key.includes('bigbasket')) return platformCatalog.bigbasket;
     if (key.includes('instamart')) return platformCatalog.instamart;
@@ -230,120 +93,77 @@ function AiPage({ userData }) {
     };
   };
 
+function AiPage({ userData, authReady, onLoginClick }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const promptFromState = location.state?.prompt || '';
+
+  const [query, setQuery] = useState(promptFromState);
+  const activeRequest = useRef(null);
+  const inFlight = useRef(false);
+  const [progressMessage, setProgressMessage] = useState('');
+
+  const [result, setResult] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+
+
+  const [selectedQuantities, setSelectedQuantities] = useState({});
+  const [removedIngredients, setRemovedIngredients] = useState([]);
+  const [selectedIngredientStores, setSelectedIngredientStores] = useState({});
+  const [selectedSummaryStore, setSelectedSummaryStore] = useState('');
+
+  useEffect(() => () => activeRequest.current?.abort(), []);
+  useEffect(() => { setQuery(promptFromState); }, [promptFromState]);
+
+  useEffect(() => {
+    if (document.querySelector('link[data-fonts="dealdock-fonts"]')) return;
+
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href =
+      'https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;1,9..144,500&family=Inter:wght@400;500;600;700;800;900&display=swap';
+    link.setAttribute('data-fonts', 'dealdock-fonts');
+    document.head.appendChild(link);
+  }, []);
+
   const getPlatformColor = (platform) => getPlatformMeta(platform).color;
 
-  const normalizeBackendResult = (backendData) => {
-    if (!backendData) {
-      return {
-        winner: mockInterfaceResult.winner,
-        runnerUps: mockInterfaceResult.runnerUps,
-        winnerItems: mockInterfaceResult.winnerItems,
-      };
-    }
-
-    const normalizeOptions = (options = [], fallbackOptions = []) => {
-      const safeOptions = (options.length ? options : fallbackOptions).filter((option) =>
-        allowedPlatformKeys.includes(getPlatformMeta(option.platform).key)
-      );
-
-      return safeOptions.sort((a, b) => a.price - b.price);
-    };
-
-    if (Array.isArray(backendData.winnerItems) && backendData.winnerItems.length > 0) {
-      return {
-        winner:
-          backendData.winner && allowedPlatformKeys.includes(getPlatformMeta(backendData.winner.platform).key)
-            ? backendData.winner
-            : mockInterfaceResult.winner,
-        runnerUps: (backendData.runnerUps || mockInterfaceResult.runnerUps).filter((platform) =>
-          allowedPlatformKeys.includes(getPlatformMeta(platform.platform).key)
-        ),
-        winnerItems: backendData.winnerItems.map((item, index) => {
-          const fallback = mockInterfaceResult.winnerItems[index] || mockInterfaceResult.winnerItems[0];
-
-          return {
-            originalQuery: item.originalQuery || fallback.originalQuery,
-            weight: item.weight || fallback.weight,
-            unitPrice: item.unitPrice || fallback.unitPrice,
-            quantityOptions:
-              item.quantityOptions ||
-              fallback.quantityOptions ||
-              [item.weight ? `${item.weight} Pack` : '100g Pack'],
-            options: normalizeOptions(item.options || [], fallback.options || []),
-            image_url: item.image_url || fallback.image_url || '',
-          };
-        }),
-      };
-    }
-
-    if (Array.isArray(backendData?.winner?.items) && backendData.winner.items.length > 0) {
-      const safeItems = backendData.winner.items.map((item, index) => {
-        const fallback =
-          mockInterfaceResult.winnerItems.find(
-            (m) => m.originalQuery.toLowerCase() === String(item.originalQuery || '').toLowerCase()
-          ) ||
-          mockInterfaceResult.winnerItems[index] ||
-          mockInterfaceResult.winnerItems[0];
-
-        return {
-          originalQuery: item.originalQuery || fallback.originalQuery,
-          weight: item.weight || fallback.weight,
-          unitPrice: item.unitPrice || fallback.unitPrice,
-          quantityOptions:
-            item.quantityOptions ||
-            fallback.quantityOptions ||
-            [item.weight ? `${item.weight} Pack` : '100g Pack'],
-          options: normalizeOptions(item.options || [], fallback.options || []),
-          image_url: item.image_url || fallback.image_url || '',
-        };
-      });
-
-      return {
-        winner:
-          backendData.winner && allowedPlatformKeys.includes(getPlatformMeta(backendData.winner.platform).key)
-            ? backendData.winner
-            : mockInterfaceResult.winner,
-        runnerUps: (backendData.runnerUps || mockInterfaceResult.runnerUps).filter((platform) =>
-          allowedPlatformKeys.includes(getPlatformMeta(platform.platform).key)
-        ),
-        winnerItems: safeItems,
-      };
-    }
-
-    return {
-      winner: mockInterfaceResult.winner,
-      runnerUps: mockInterfaceResult.runnerUps,
-      winnerItems: mockInterfaceResult.winnerItems,
-    };
-  };
-
   const fetchIngredients = async (dish) => {
-    if (!dish.trim()) return;
-
-    setIsLoading(true);
-    setError('');
-    setResult(null);
-    setRemovedIngredients([]);
-    setSelectedIngredientStores({});
-    setSelectedSummaryStore('');
-    setSelectedQuantities({});
-
+    if (inFlight.current) return;
+    const value = dish.trim();
+    if (!value || value.length > 120) { setError('Enter a dish name between 1 and 120 characters.'); return; }
+    if (!userData) { onLoginClick(); setError('Log in, then submit your dish to build a basket.'); return; }
+    const controller = new AbortController();
+    activeRequest.current = controller;
+    inFlight.current = true;
+    setIsLoading(true); setError(''); setResult(null); setProgressMessage('Building your ingredient list…');
+    setRemovedIngredients([]); setSelectedIngredientStores({}); setSelectedSummaryStore(''); setSelectedQuantities({});
     try {
-      const response = await axios.post('http://localhost:3000/api/get-ingredients', {
-        dishName: dish,
-      });
-
-      if (response.data.success) {
-        setResult(normalizeBackendResult(response.data.data));
-      } else {
-        setError('Engine failed to generate a list.');
+      for (let attempt = 0; attempt < 45; attempt++) {
+        const response = await getIngredients(value, controller.signal);
+        if (!response.success) throw new Error('Unable to build this basket. Please try again.');
+        if (!response.isPending) {
+          const normalized = normalizeRecipe(response.data);
+          setResult(normalized);
+          if (normalized.itemsRequested > normalized.winnerItems.length) setError(`Offers found for ${normalized.winnerItems.length} of ${normalized.itemsRequested} ingredients. Subtotals cover available items only.`);
+          return;
+        }
+        setProgressMessage(response.message || 'Fetching current product offers…');
+        await new Promise((resolve, reject) => {
+          const abort = () => { clearTimeout(timer); reject(new DOMException('Aborted', 'AbortError')); };
+          const timer = setTimeout(() => { controller.signal.removeEventListener('abort', abort); resolve(undefined); }, 4000);
+          controller.signal.addEventListener('abort', abort, { once: true });
+        });
       }
-    } catch (err) {
-      console.error(err);
-      setResult(normalizeBackendResult(mockInterfaceResult));
-      setError('');
+      setError('Your basket is taking longer than expected. Please try again shortly.');
+    } catch (failure) {
+      if (controller.signal.aborted) return;
+      setError(errorMessage(failure));
+      if (failure.status === 401) onLoginClick();
     } finally {
-      setIsLoading(false);
+      inFlight.current = false;
+      if (!controller.signal.aborted) setIsLoading(false);
     }
   };
 
@@ -383,21 +203,21 @@ function AiPage({ userData }) {
     'Chicken Biryani',
     'Paneer Butter Masala',
     'Masala Dosa',
-    'Other Dishes',
+    'Palak Paneer',
   ];
 
   const placeholderBlocks = [
     {
       title: 'Ingredient basket',
-      text: 'Each ingredient row will show only Blinkit, Zepto, Instamart and BigBasket.',
+      text: 'Start with a dish to find ingredients and available store offers.',
     },
     {
       title: 'Store mapping',
-      text: 'Customer can change quantity, remove ingredients, and select store cards.',
+      text: 'Compare available pack sizes, remove ingredients, and choose your preferred store.',
     },
     {
       title: 'Best-value recommendation',
-      text: 'Backend can later replace mock data with live scraper or catalog results.',
+      text: 'See a subtotal for each store in your selection. Final prices and availability are confirmed by the store.',
     },
   ];
 
@@ -407,9 +227,11 @@ function AiPage({ userData }) {
     return result.winnerItems
       .filter((item) => !removedIngredients.includes(item.originalQuery))
       .map((item) => {
-        const visibleOptions = [...(item.options || [])].sort((a, b) => a.price - b.price);
+        const quantity = selectedQuantities[item.originalQuery] || item.quantityOptions[0];
+        const visibleOptions = availableOffers(item, quantity);
         const defaultKey = getPlatformMeta(visibleOptions[0]?.platform).key;
-        const selectedKey = selectedIngredientStores[item.originalQuery] || defaultKey;
+        const preferred = selectedIngredientStores[item.originalQuery];
+        const selectedKey = visibleOptions.some(option => getPlatformMeta(option.platform).key === preferred) ? preferred : defaultKey;
 
         return {
           ...item,
@@ -417,7 +239,7 @@ function AiPage({ userData }) {
           selectedStoreKey: selectedKey,
         };
       });
-  }, [result, removedIngredients, selectedIngredientStores]);
+  }, [result, removedIngredients, selectedIngredientStores, selectedQuantities]);
 
   const platformTotals = useMemo(() => {
     const totals = {};
@@ -432,8 +254,6 @@ function AiPage({ userData }) {
         const existing = totals[meta.key] || {
           platform: meta.name,
           totalPrice: 0,
-          avgRating: 4.4,
-          deliveryTime: '10 mins',
           checkoutUrl: meta.deepLink,
           itemCount: 0,
         };
@@ -446,10 +266,11 @@ function AiPage({ userData }) {
       }
     });
 
-    return Object.values(totals).sort((a, b) => a.totalPrice - b.totalPrice);
+    return Object.values(totals).map(total => ({ ...total, totalPrice: Number(total.totalPrice.toFixed(2)) })).sort((a, b) => a.platform.localeCompare(b.platform));
   }, [visibleWinnerItems]);
 
   const bestPlatform = platformTotals[0] || null;
+  const selectedTotal = platformTotals.reduce((total, platform) => total + platform.totalPrice, 0).toFixed(2);
   const selectedPlatformForCheckout = selectedSummaryStore || bestPlatform?.platform || '';
 
   return (
@@ -1310,12 +1131,14 @@ function AiPage({ userData }) {
                       type="text"
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
-                      placeholder="Type a dish name or grocery intent"
-                      disabled={isLoading}
+                      placeholder="Type a dish name"
+                      maxLength={120}
+                      aria-label="Dish name"
+                      disabled={isLoading || !authReady}
                     />
                   </div>
 
-                  <button className="ai-submit" type="submit" disabled={isLoading || !query.trim()}>
+                  <button className="ai-submit" type="submit" disabled={isLoading || !authReady || !query.trim()}>
                     <svg
                       viewBox="0 0 24 24"
                       fill="none"
@@ -1338,7 +1161,7 @@ function AiPage({ userData }) {
                       type="button"
                       className="ai-chip"
                       onClick={() => handleChipClick(item)}
-                      disabled={isLoading}
+                      disabled={isLoading || !authReady}
                     >
                       {item}
                     </button>
@@ -1348,19 +1171,19 @@ function AiPage({ userData }) {
             </div>
           </section>
 
-          {error && <div className="ai-errorState">{error}</div>}
+          {error && <div className="ai-errorState" role="alert">{error}</div>}
 
           <section className="ai-grid">
             <div className="ai-panel">
               <div className="ai-panelHead">
                 <div>
                   <h2 className="ai-panelTitle">
-                    {result ? `${bestPlatform?.platform || result.winner.platform} Ingredient Basket` : 'Basket workspace'}
+                    {result ? 'Your ingredient basket' : 'Build your basket'}
                   </h2>
                   <div className="ai-panelMeta">
                     {result
-                      ? 'Horizontal card layout like your sketch'
-                      : 'Reserved for AI output and item-level mapping'}
+                      ? 'Choose a pack size and store for each ingredient'
+                      : 'Enter a dish to get started'}
                   </div>
                 </div>
               </div>
@@ -1369,7 +1192,7 @@ function AiPage({ userData }) {
                 {isLoading && (
                   <div className="ai-loadingState">
                     <div className="ai-spinner" />
-                    <span>Scraping local catalog variants...</span>
+                    <span role="status">{progressMessage}</span>
                   </div>
                 )}
 
@@ -1422,7 +1245,7 @@ function AiPage({ userData }) {
                         const selectedQuantity =
                           selectedQuantities[item.originalQuery] ||
                           item.quantityOptions?.[0] ||
-                          `${item.weight || '100g'} Pack`;
+                          'Pack size unavailable';
 
                         return (
                           <li key={`${item.originalQuery}-${index}`} className="ai-liveItem">
@@ -1440,12 +1263,13 @@ function AiPage({ userData }) {
                               <div className="ai-itemMetaLine">
                                 <select
                                   className="ai-select"
+                                  aria-label={`Pack size for ${item.originalQuery}`}
                                   value={selectedQuantity}
                                   onChange={(e) =>
                                     handleQuantityChange(item.originalQuery, e.target.value)
                                   }
                                 >
-                                  {(item.quantityOptions || [`${item.weight || '100g'} Pack`]).map((qty) => (
+                                  {(item.quantityOptions || ['Pack size unavailable']).map((qty) => (
                                     <option key={qty} value={qty}>
                                       {qty}
                                     </option>
@@ -1522,12 +1346,12 @@ function AiPage({ userData }) {
                 <div className="ai-summaryCard">
                   <div className="ai-summaryEyebrow">Comparison summary</div>
                   <h3 className="ai-summaryTitle">
-                    {bestPlatform ? `₹${bestPlatform.totalPrice}` : 'Best recommendation area'}
+                    {bestPlatform ? `₹${selectedTotal}` : 'Your selected subtotal'}
                   </h3>
                   <p className="ai-summaryCopy">
                     {bestPlatform
-                      ? `${bestPlatform.platform} currently has the lowest selected total based on your ingredient-level quick-commerce selections.`
-                      : 'You can later show cheapest store, basket total, estimated savings, and quick call-to-action here.'}
+                      ? 'Total of your selected offers across stores. Pack sizes may differ by store. Delivery fees are excluded.'
+                      : 'Your store subtotals will appear after your basket is ready.'}
                   </p>
                 </div>
 
@@ -1543,7 +1367,7 @@ function AiPage({ userData }) {
                       )
                     }
                   >
-                    Checkout on {selectedPlatformForCheckout}
+                    Visit {selectedPlatformForCheckout}
                   </button>
                 )}
 
@@ -1556,9 +1380,9 @@ function AiPage({ userData }) {
 
                 <div className="ai-storeList">
                   {platformTotals.length > 0 ? (
-                    platformTotals.map((platform, index) => {
+                    platformTotals.map((platform) => {
                       const meta = getPlatformMeta(platform.platform);
-                      const isWinner = index === 0;
+                      const isWinner = false;
                       const isSelected = selectedPlatformForCheckout === platform.platform;
 
                       return (
@@ -1611,17 +1435,17 @@ function AiPage({ userData }) {
                           </div>
                           <div>
                             <div className="ai-storeName">{platformCatalog[key].name}</div>
-                            <div className="ai-storeMeta">Store result placeholder</div>
+                            <div className="ai-storeMeta">No offers loaded</div>
                           </div>
                         </div>
-                        <div className="ai-storeStatus">Pending</div>
+                        <div className="ai-storeStatus">—</div>
                       </div>
                     ))
                   )}
                 </div>
 
                 <div className="ai-note">
-                  Prompt passed from home: <strong>{promptFromState || 'No prompt received yet'}</strong>
+                  Prices reflect the provider’s catalog location. Confirm stock, delivery fees, and your address on the store’s website. Your basket is not automatically transferred.
                 </div>
               </div>
             </aside>
@@ -1629,11 +1453,7 @@ function AiPage({ userData }) {
         </div>
       </div>
 
-      <LoginPage
-        isOpen={isLoginOpen}
-        onClose={() => setIsLoginOpen(false)}
-        onLoginSuccess={() => setIsLoginOpen(false)}
-      />
+
     </>
   );
 }

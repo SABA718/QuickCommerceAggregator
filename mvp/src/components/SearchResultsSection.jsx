@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { safeProductUrl } from '../api';
 import { useLocation } from 'react-router-dom';
 
 function SearchResultsSection({ query, results = [], loading, isPolling, loadingMessage }) {
@@ -9,8 +10,8 @@ function SearchResultsSection({ query, results = [], loading, isPolling, loading
   const isAiPage = location.pathname === '/ai';
 
   const getTimeAgo = (dateString) => {
-    if (!dateString) return 'just now';
-    const diffInMinutes = Math.floor((new Date() - new Date(dateString)) / (1000 * 60));
+    if (!dateString || Number.isNaN(Date.parse(dateString))) return 'time unavailable';
+    const diffInMinutes = Math.floor((Date.now() - new Date(dateString).getTime()) / (1000 * 60));
     if (diffInMinutes < 1) return 'just now';
     if (diffInMinutes < 60) return `${diffInMinutes} mins ago`;
     const diffInHours = Math.floor(diffInMinutes / 60);
@@ -38,7 +39,7 @@ function SearchResultsSection({ query, results = [], loading, isPolling, loading
       Object.values(
         (results || []).reduce((acc, item) => {
           const productName = item.name?.trim() || 'Unnamed Product';
-          const key = productName.toLowerCase();
+          const key = `${productName.toLowerCase()}|${getQuantityText(item)}`;
 
           if (!acc[key]) {
             acc[key] = {
@@ -56,7 +57,7 @@ function SearchResultsSection({ query, results = [], loading, isPolling, loading
             platform: item.platform || 'Store',
             price: Number(item.price) || 0,
             time: item.time,
-            link: item.link || '#',
+            link: safeProductUrl(item.link),
             created_at: item.created_at,
           });
 
@@ -135,7 +136,7 @@ function SearchResultsSection({ query, results = [], loading, isPolling, loading
             fontSize: '14px',
           }}
         >
-          Checking prices...
+          <div role="status" className="loading-skeleton">Checking prices…</div>
         </div>
       )}
 
@@ -292,7 +293,7 @@ function SearchResultsSection({ query, results = [], loading, isPolling, loading
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
                   {product.offers.map((offer, offerIndex) => {
                     const theme = getStoreTheme(offer.platform);
-                    const displayTime = offer.time === '10 mins' || !offer.time ? 'Check App' : offer.time;
+                    const displayTime = offer.time || 'Check store for delivery';
                     const isSelected = selectedPlatform === offer.platform;
 
                     return (

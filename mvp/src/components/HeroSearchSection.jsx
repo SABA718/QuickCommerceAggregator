@@ -27,7 +27,7 @@ function useFullBleedPage() {
   }, []);
 }
 
-function HeroSearchSection({ onCompareSearch, onOpenAiPage, hasSearched = false }) {
+function HeroSearchSection({ onCompareSearch, onOpenAiPage, hasSearched = false, loading = false }) {
   useSharedFonts();
   useFullBleedPage();
 
@@ -95,7 +95,7 @@ function HeroSearchSection({ onCompareSearch, onOpenAiPage, hasSearched = false 
   const handleSubmit = (e) => {
     e.preventDefault();
     const value = query.trim();
-    if (!value) return;
+    if (!value || loading) return;
     setShowAiPanel(false);
     onCompareSearch?.(value);
   };
@@ -549,6 +549,8 @@ function HeroSearchSection({ onCompareSearch, onOpenAiPage, hasSearched = false 
                 </svg>
 
                 <input
+                  maxLength={120}
+                  disabled={loading}
                   className="dd-searchInput"
                   type="text"
                   value={query}
@@ -559,7 +561,7 @@ function HeroSearchSection({ onCompareSearch, onOpenAiPage, hasSearched = false 
                   aria-label="Search grocery product"
                 />
 
-                <button className="dd-searchButton" type="submit" aria-label="Search">
+                <button className="dd-searchButton" type="submit" aria-label="Search" disabled={loading}>
                   <svg
                     viewBox="0 0 24 24"
                     fill="none"
