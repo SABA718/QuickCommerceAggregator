@@ -1,82 +1,99 @@
-require('dotenv').config();
 const { ApifyClient } = require('apify-client');
+const { HttpError } = require('./errors');
 
-// Initialize Apify
-const client = new ApifyClient({ token: process.env.APIFY_TOKEN });
+const PLATFORMS = Object.freeze(['Blinkit', 'Zepto', 'Instamart', 'BigBasket', 'JioMart']);
 
-// Helper to turn "₹132" into the number 132
-const cleanPrice = (rawPrice) => {
-    if (!rawPrice) return 0;
-    const numericString = String(rawPrice).replace(/[^0-9.]/g, '');
-    return parseFloat(numericString) || 0;
-};
+/** @param {unknown} value @returns {number | null} */
+function cleanPrice(value) {
+  if (typeof value !== 'string' && typeof value !== 'number') return null;
+  const cleaned = String(value).trim().replace(/^(?:₹|Rs\.?|INR)\s*/i, '').replace(/,/g, '');
+  if (!/^\d+(?:\.\d{1,2})?$/.test(cleaned)) return null;
+  const price = Number(cleaned);
+  return Number.isFinite(price) && price > 0 && price <= 1000000 ? price : null;
+}
 
-// 🌟 THE UNIFIED BATCH ENGINE
-const runLiveBatchScraper = async (ingredientsArray) => {
-    console.log(`🚀 Triggering Apify Actor for ${ingredientsArray.length} items:`, ingredientsArray);
+/** @param {unknown} value */
+function safeUrl(value) {
+  if (typeof value !== 'string' || value.length > 2048) return '';
+  try {
+    const parsed = new URL(value);
+    return ['http:', 'https:'].includes(parsed.protocol) && !parsed.username && !parsed.password ? parsed.href : '';
+  } catch { return ''; }
+}
 
-    try {
-        const allPromises = ingredientsArray.map(async (query) => {
-            try {
-                const run = await client.actor("zangscraper/blinkit-zepto-apify-actor").call({
-                    "searchQuery": query,
-                    "maxItems": 15
-                });
-                
-                const { items } = await client.dataset(run.defaultDatasetId).listItems();
-                return { query, items: items || [] };
-            } catch (err) {
-                console.error(`⚠️ Apify failed for "${query}":`, err.message);
-                return { query, items: [] };
+/** @param {unknown} value @param {number} [max] */
+function cleanText(value, max = 200) {
+  return typeof value === 'string' ? value.trim().slice(0, max) : '';
+}
+
+/** @param {string} query @param {Record<string, unknown>[]} items @returns {import('./database').Product[]} */
+function normalizeProducts(query, items) {
+  const seen = new Set();
+  /** @type {import('./database').Product[]} */
+  const products = [];
+  for (const item of items.slice(0, 100)) {
+    if (!item || typeof item !== 'object') continue;
+    const platform = PLATFORMS.find(name => name.toLowerCase() === cleanText(item.platform).toLowerCase());
+    const name = cleanText(item.name);
+    const price = cleanPrice(item.discountedPrice ?? item.sellingPrice ?? item.price);
+    if (!platform || !name || price === null || item.isInStock === false || item.inStock === false) continue;
+    const quantity = cleanText(item.quantity || item.weight || item.unit || item.size, 100);
+    const key = JSON.stringify([platform, name, quantity]);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    products.push({
+      search_query: query.toLowerCase().trim(), location_key: 'default', platform, name, price,
+      mrp: cleanPrice(item.mrp ?? item.originalPrice),
+      image_url: safeUrl(item.image || item.imageUrl || item.image_url),
+      time: cleanText(item.deliveryTime, 100), link: safeUrl(item.url || item.link), quantity,
+      created_at: new Date().toISOString(),
+    });
+  }
+  return products;
+}
+
+/**
+ * @param {{apifyToken?:string, apifyActorId:string, scrapeTimeoutSeconds:number}} config
+ * @param {{warn:Function}} logger
+ */
+function createScraper(config, logger) {
+  const client = config.apifyToken ? new ApifyClient({ token: config.apifyToken, maxRetries: 1, timeoutSecs: 15 }) : null;
+  return {
+    available: Boolean(client),
+    /** @param {string[]} queries @returns {Promise<import('./database').Product[]>} */
+    async fetchProducts(queries) {
+      if (!client) throw new HttpError(503, 'SCRAPER_UNAVAILABLE', 'Live prices are not configured yet.');
+      if (queries.length > 20) throw new HttpError(400, 'INVALID_ITEMS', 'Compare at most 20 items at a time.');
+      /** @type {import('./database').Product[]} */
+      const results = [];
+      const pending = [...new Set(queries)];
+      const worker = async () => {
+        while (pending.length) {
+          const query = pending.shift();
+          if (!query) continue;
+          try {
+            const run = await client.actor(config.apifyActorId).call({ searchQuery: query, maxItems: 15 }, {
+              timeout: config.scrapeTimeoutSeconds,
+              waitSecs: config.scrapeTimeoutSeconds + 5,
+            });
+            if (run.status !== 'SUCCEEDED') throw new Error('Actor did not complete');
+            const { items } = await client.dataset(run.defaultDatasetId).listItems({ limit: 100 });
+            const normalized = normalizeProducts(query, items);
+            if (items.length && !normalized.length) {
+              throw new HttpError(502, 'SCRAPER_INVALID_RESPONSE', 'The price provider returned invalid product data.');
             }
-        });
+            results.push(...normalized);
+          } catch (error) {
+            logger.warn({ event: 'scrape_failed', errorType: error?.constructor?.name });
+            if (error instanceof HttpError) throw error;
+            throw new HttpError(502, 'SCRAPER_FAILED', 'The price provider is temporarily unavailable. Please try again later.');
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(2, pending.length) }, worker));
+      return results;
+    },
+  };
+}
 
-        const scrapedDatasets = await Promise.all(allPromises);
-        let allFormattedResults = [];
-
-        scrapedDatasets.forEach(({ query, items }) => {
-            console.log(`📦 Apify returned ${items?.length || 0} raw items for "${query}"`);
-
-            if (items && items.length > 0) {
-                // 1. STRICT FILTERING
-                const searchWords = query.toLowerCase().split(' ');
-                let relevantItems = items.filter(item => {
-                    const productName = (item.name || "").toLowerCase();
-                    return searchWords.some(word => productName.includes(word));
-                });
-
-                // 2. THE FAILSAFE (Crucial for generic terms like "milk")
-                if (relevantItems.length === 0 && items.length > 0) {
-                    console.log(`⚠️ Strict filter deleted everything for "${query}". Triggering Failsafe (keeping raw items).`);
-                    relevantItems = items;
-                }
-
-                if (relevantItems.length > 0) {
-                    // 3. FORMATTING FOR DB
-                    const formattedItems = relevantItems.map(item => ({
-                        search_query: query.toLowerCase(),
-                        platform: item.platform || 'Unknown',
-                        name: item.name || 'Unnamed Product',
-                        price: cleanPrice(item.discountedPrice || item.sellingPrice || item.price), 
-                        mrp: cleanPrice(item.mrp || item.originalPrice || item.price),
-                        image_url: item.image || item.imageUrl || item.image_url || '',
-                        time: item.deliveryTime || '10 mins',
-                        link: item.url || '',
-                        quantity: item.quantity || item.weight || item.unit || item.size || '1 pc' 
-                    }));
-
-                    allFormattedResults.push(...formattedItems);
-                }
-            }
-        });
-
-        return allFormattedResults;
-
-    } catch (e) {
-        console.error("❌ Apify Master Scraper Error:", e.message);
-        return [];
-    }
-};
-
-// Export ONLY the new batch engine
-module.exports = { runLiveBatchScraper };
+module.exports = { createScraper, normalizeProducts, cleanPrice, safeUrl, PLATFORMS };

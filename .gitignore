@@ -24,3 +24,16 @@ env/
 # OS & Editor Files
 .DS_Store
 .vscode/
+# Commit only the environment template, never real secrets.
+!.env.example
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+coverage/
+playwright-report/
+test-results/
+*.log
+*.dump
+*.sql.gz
+backend/storage/

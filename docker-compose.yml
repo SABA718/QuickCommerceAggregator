@@ -1,21 +1,158 @@
+name: dealdock
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: '3'
+
 services:
-  postgres:
-    image: postgres:15-alpine
-    container_name: qc-postgres
+  edge:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: rootpassword
-      POSTGRES_DB: quick_compare_db
+      APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN to your public DNS hostname}
+      TLS_EMAIL: ${TLS_EMAIL:?Set TLS_EMAIL for certificate renewal notices}
     ports:
-      - "51213:5432"
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - ./deployment/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+    networks: [ingress]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    cpus: 0.5
+    logging: *logging
+
+  web:
+    image: dealdock-web:${IMAGE_TAG:-local}
+    build:
+      context: .
+      target: frontend
+      args:
+        SITE_URL: ${FRONTEND_URL:?Set FRONTEND_URL to https://your-hostname}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks: [ingress, services]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    cpus: 0.5
+    logging: *logging
+
+  backend:
+    image: dealdock-api:${IMAGE_TAG:-local}
+    build:
+      context: .
+      target: backend
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      FRONTEND_URL: ${FRONTEND_URL:?Set FRONTEND_URL to https://your-hostname}
+      TRUST_PROXY: '2'
+      SUPABASE_URL: ${SUPABASE_URL:?Set SUPABASE_URL}
+      SUPABASE_KEY: ${SUPABASE_KEY:?Set the server-only Supabase service-role key}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?Generate a random hex Redis password}@redis:6379
+      SESSION_SECRET: ${SESSION_SECRET:?Generate a random session secret of at least 32 characters}
+      TEXTBEE_DEVICE_ID: ${TEXTBEE_DEVICE_ID:-}
+      TEXTBEE_API_KEY: ${TEXTBEE_API_KEY:-}
+      APIFY_TOKEN: ${APIFY_TOKEN:-}
+      APIFY_ACTOR_ID: ${APIFY_ACTOR_ID:-zangscraper/blinkit-zepto-apify-actor}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
+      AI_SERVICE_URL: http://ai:8000
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:?Generate an internal AI service token of at least 32 characters}
+      OTP_EXPIRY_SECONDS: ${OTP_EXPIRY_SECONDS:-300}
+      OTP_RESEND_SECONDS: ${OTP_RESEND_SECONDS:-30}
+      OTP_MAX_ATTEMPTS: ${OTP_MAX_ATTEMPTS:-5}
+      SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-604800}
+      CACHE_TTL_SECONDS: ${CACHE_TTL_SECONDS:-21600}
+      NEGATIVE_CACHE_SECONDS: ${NEGATIVE_CACHE_SECONDS:-300}
+      SCRAPE_TIMEOUT_SECONDS: ${SCRAPE_TIMEOUT_SECONDS:-90}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks: [services, cache]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 512m
+    cpus: 1.0
+    logging: *logging
+
+  ai:
+    image: dealdock-ai:${IMAGE_TAG:-local}
+    build:
+      context: .
+      target: ai
+    restart: unless-stopped
+    init: true
+    environment:
+      SUPABASE_URL: ${SUPABASE_URL:?Set SUPABASE_URL}
+      SUPABASE_KEY: ${SUPABASE_KEY:?Set SUPABASE_KEY}
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:?Set AI_SERVICE_TOKEN}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      AI_HTTP_TIMEOUT_SECONDS: ${AI_HTTP_TIMEOUT_SECONDS:-20}
+      CATALOG_CACHE_SECONDS: ${CATALOG_CACHE_SECONDS:-60}
+    networks: [services]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    cpus: 1.0
+    logging: *logging
 
   redis:
-    image: redis:7-alpine
-    container_name: qc-redis
-    ports:
-      - "6379:6379"
+    image: redis:7.4-alpine
+    user: redis
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD}
+    command:
+      - sh
+      - -c
+      - exec redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes --appendfsync everysec --maxmemory 128mb --maxmemory-policy noeviction
+    healthcheck:
+      test: ['CMD-SHELL', 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - redis-data:/data
+    networks: [cache]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 384m
+    cpus: 0.5
+    logging: *logging
+
+networks:
+  ingress:
+  services:
+  cache:
+    internal: true
 
 volumes:
-  postgres-data:
+  redis-data:
+  caddy-data:
+  caddy-config:

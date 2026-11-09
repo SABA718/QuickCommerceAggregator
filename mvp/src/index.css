@@ -1,1 +1,13 @@
 @import "tailwindcss";
+html, body, #root { margin: 0; min-height: 100%; width: 100%; }
+* { box-sizing: border-box; }
+body { color: #1f1f1f; background: #f8f6f1; font-family: Inter, Arial, sans-serif; }
+button:disabled { cursor: wait; opacity: .65; }
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #a57b10; outline-offset: 3px; }
+.status-page { max-width: 760px; margin: 64px auto; padding: 24px; }
+.app-message { max-width: 1100px; margin: 16px auto; padding: 16px; background: #fff6df; border-radius: 12px; }
+.info-overlay { position: fixed; inset: 0; background: #0007; display: grid; place-items: center; z-index: 1000; padding: 20px; }
+.info-dialog { max-width: 500px; border-radius: 20px; background: #f8f6f1; padding: 28px; line-height: 1.7; }
+.info-dialog button { background: #1f1f1f; color: white; border-radius: 8px; padding: 10px 20px; }
+.loading-skeleton { min-height: 100px; border-radius: 16px; background: linear-gradient(90deg,#eee9df,#faf8f2,#eee9df); padding: 36px; }
+@media (max-width: 700px) { .main-navbar > div { flex-wrap: wrap; gap: 12px !important; padding: 14px 16px !important; } .main-navbar a { font-size: 12px !important; } }
